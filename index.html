@@ -460,39 +460,49 @@ let myVotes={};
 try{myVotes=JSON.parse(localStorage.getItem('cvote-my')||'{}');}catch(e){}
 function saveMyVote(qi,choice){myVotes[`q${qi}`]=choice;localStorage.setItem('cvote-my',JSON.stringify(myVotes));}
 
-let sessionState={current_question:0,show_results:false,reveal_answer:false};
+let sessionState={current_question:0,show_results:false,reveal_answer:false,session_number:1};
 let voteCounts=[0,0,0,0],totalVotes=0,connected=false;
-let localVotes={};
+let localVotes={},localSessionNum=1;
+
+// Track which session the student knows about
+let knownSession=parseInt(localStorage.getItem('cvote-sess')||'0');
+
+function clearLocalVotes(){myVotes={};localStorage.setItem('cvote-my','{}');}
+function syncSession(){
+  const sn=sessionState.session_number||1;
+  if(sn!==knownSession){clearLocalVotes();knownSession=sn;localStorage.setItem('cvote-sess',String(sn));}
+}
 
 let sb=null;
 if(!isLocal)sb=createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 
-async function loadSessionState(){if(isLocal)return;const{data}=await sb.from('session_state').select('*').eq('id',1).single();if(data)sessionState=data;}
+async function loadSessionState(){if(isLocal)return;const{data}=await sb.from('session_state').select('*').eq('id',1).single();if(data){sessionState=data;syncSession();}}
 async function loadVotes(){
-  if(isLocal){const qv=localVotes[`q${sessionState.current_question}`]||{};voteCounts=[0,0,0,0];totalVotes=0;
+  const sn=sessionState.session_number||1;
+  if(isLocal){const qv=localVotes[`${sn}_${sessionState.current_question}`]||{};voteCounts=[0,0,0,0];totalVotes=0;
     for(const c of Object.values(qv)){if(c>=0&&c<4){voteCounts[c]++;totalVotes++;}}return;}
-  const{data}=await sb.from('votes').select('choice').eq('question_index',sessionState.current_question);
+  const{data}=await sb.from('votes').select('choice').eq('question_index',sessionState.current_question).eq('session_number',sn);
   voteCounts=[0,0,0,0];totalVotes=0;for(const row of(data||[])){if(row.choice>=0&&row.choice<4){voteCounts[row.choice]++;totalVotes++;}}}
 async function fullRefresh(){await loadSessionState();await loadVotes();render();}
 
 async function submitVote(qi,choice){
-  if(isLocal){saveMyVote(qi,choice);if(!localVotes[`q${qi}`])localVotes[`q${qi}`]={};localVotes[`q${qi}`][sessionId]=choice;await loadVotes();render();return;}
-  await sb.from('votes').upsert({voter_id:sessionId,question_index:qi,choice:choice});}
+  const sn=sessionState.session_number||1;
+  if(isLocal){saveMyVote(qi,choice);const k=`${sn}_${qi}`;if(!localVotes[k])localVotes[k]={};localVotes[k][sessionId]=choice;await loadVotes();render();return;}
+  await sb.from('votes').upsert({voter_id:sessionId,question_index:qi,choice:choice,session_number:sn});}
 async function setCurrent(i){
   if(isLocal){sessionState={...sessionState,current_question:i,show_results:false,reveal_answer:false};await loadVotes();render();return;}
   await sb.from('session_state').update({current_question:i,show_results:false,reveal_answer:false}).eq('id',1);}
 async function setShowResults(v){if(isLocal){sessionState.show_results=v;render();return;}await sb.from('session_state').update({show_results:v}).eq('id',1);}
 async function setRevealAnswer(v){if(isLocal){sessionState.reveal_answer=v;render();return;}await sb.from('session_state').update({reveal_answer:v}).eq('id',1);}
-async function resetAll(){myVotes={};localStorage.setItem('cvote-my','{}');
-  if(isLocal){sessionState={current_question:0,show_results:false,reveal_answer:false};localVotes={};await loadVotes();render();return;}
-  await sb.from('session_state').update({current_question:0,show_results:false,reveal_answer:false}).eq('id',1);}
+async function resetAll(){clearLocalVotes();
+  if(isLocal){localSessionNum++;sessionState={current_question:0,show_results:false,reveal_answer:false,session_number:localSessionNum};localVotes={};await loadVotes();render();return;}
+  const newSn=(sessionState.session_number||1)+1;
+  await sb.from('session_state').update({current_question:0,show_results:false,reveal_answer:false,session_number:newSn}).eq('id',1);}
 
 function subscribeRealtime(){if(isLocal)return;
   sb.channel('live')
     .on('postgres_changes',{event:'*',schema:'public',table:'session_state'},(p)=>{if(p.new){
-      // Detect reset: question 0, all flags off → clear local votes
-      if(p.new.current_question===0&&!p.new.show_results&&!p.new.reveal_answer){myVotes={};localStorage.setItem('cvote-my','{}');}
-      sessionState=p.new;loadVotes().then(render);}})
+      sessionState=p.new;syncSession();loadVotes().then(render);}})
     .on('postgres_changes',{event:'*',schema:'public',table:'votes'},(p)=>{
       if(!p.new)return;
       if(p.new.question_index===sessionState.current_question){

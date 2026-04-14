@@ -7,18 +7,20 @@ CREATE TABLE session_state (
   id int PRIMARY KEY DEFAULT 1,
   current_question int NOT NULL DEFAULT 0,
   show_results boolean NOT NULL DEFAULT false,
-  reveal_answer boolean NOT NULL DEFAULT false
+  reveal_answer boolean NOT NULL DEFAULT false,
+  session_number int NOT NULL DEFAULT 1
 );
 
 INSERT INTO session_state (id) VALUES (1);
 
--- 2. Individual votes (one row per student per question)
+-- 2. Individual votes (one row per student per question per session)
 CREATE TABLE votes (
   voter_id text NOT NULL,
   question_index int NOT NULL,
   choice int NOT NULL,
+  session_number int NOT NULL DEFAULT 1,
   created_at timestamptz DEFAULT now(),
-  PRIMARY KEY (voter_id, question_index)
+  PRIMARY KEY (session_number, voter_id, question_index)
 );
 
 -- 3. Open access policies (classroom tool, no login needed)
