@@ -414,7 +414,7 @@ resize(); go(0);
 <!--  VOTING SCRIPT                             -->
 <!-- ═══════════════════════════════════════════ -->
 <script type="module">
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/+esm';
 
 const SUPABASE_URL = 'https://eoozcdtnxpzlzgcuembv.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_XOjJBpQpxAUGFc8bjtR3qA_DUTFzrRe';
@@ -475,8 +475,8 @@ async function loadVotes(){
   voteCounts=[0,0,0,0];totalVotes=0;for(const row of(data||[])){if(row.choice>=0&&row.choice<4){voteCounts[row.choice]++;totalVotes++;}}}
 async function fullRefresh(){await loadSessionState();await loadVotes();render();}
 
-async function submitVote(qi,choice){saveMyVote(qi,choice);
-  if(isLocal){if(!localVotes[`q${qi}`])localVotes[`q${qi}`]={};localVotes[`q${qi}`][sessionId]=choice;await loadVotes();render();return;}
+async function submitVote(qi,choice){
+  if(isLocal){saveMyVote(qi,choice);if(!localVotes[`q${qi}`])localVotes[`q${qi}`]={};localVotes[`q${qi}`][sessionId]=choice;await loadVotes();render();return;}
   await sb.from('votes').upsert({voter_id:sessionId,question_index:qi,choice:choice});}
 async function setCurrent(i){
   if(isLocal){sessionState={...sessionState,current_question:i,show_results:false,reveal_answer:false};await loadVotes();render();return;}
@@ -485,12 +485,21 @@ async function setShowResults(v){if(isLocal){sessionState.show_results=v;render(
 async function setRevealAnswer(v){if(isLocal){sessionState.reveal_answer=v;render();return;}await sb.from('session_state').update({reveal_answer:v}).eq('id',1);}
 async function resetAll(){myVotes={};localStorage.setItem('cvote-my','{}');
   if(isLocal){sessionState={current_question:0,show_results:false,reveal_answer:false};localVotes={};await loadVotes();render();return;}
-  await sb.from('votes').delete().neq('voter_id','');await sb.from('session_state').update({current_question:0,show_results:false,reveal_answer:false}).eq('id',1);}
+  await sb.from('session_state').update({current_question:0,show_results:false,reveal_answer:false}).eq('id',1);}
 
 function subscribeRealtime(){if(isLocal)return;
   sb.channel('live')
-    .on('postgres_changes',{event:'*',schema:'public',table:'session_state'},(p)=>{if(p.new){sessionState=p.new;loadVotes().then(render);}})
-    .on('postgres_changes',{event:'*',schema:'public',table:'votes'},(p)=>{if(p.new&&p.new.question_index===sessionState.current_question)loadVotes().then(render);})
+    .on('postgres_changes',{event:'*',schema:'public',table:'session_state'},(p)=>{if(p.new){
+      // Detect reset: question 0, all flags off → clear local votes
+      if(p.new.current_question===0&&!p.new.show_results&&!p.new.reveal_answer){myVotes={};localStorage.setItem('cvote-my','{}');}
+      sessionState=p.new;loadVotes().then(render);}})
+    .on('postgres_changes',{event:'*',schema:'public',table:'votes'},(p)=>{
+      if(!p.new)return;
+      if(p.new.question_index===sessionState.current_question){
+        // Update counts locally from the event instead of refetching
+        loadVotes().then(render);
+      }
+    })
     .subscribe((status)=>{connected=(status==='SUBSCRIBED');render();});}
 
 const $app=document.getElementById('vote-app');
@@ -541,7 +550,7 @@ function render(){
   $app.innerHTML=h;
 }
 
-window._vote=async(qi,choice)=>{if(myVotes[`q${qi}`]!==undefined)return;await submitVote(qi,choice);};
+window._vote=async(qi,choice)=>{if(myVotes[`q${qi}`]!==undefined)return;saveMyVote(qi,choice);render();await submitVote(qi,choice);};
 window._goNext=async()=>{const qi=sessionState.current_question||0;if(qi<questions.length-1)await setCurrent(qi+1);};
 window._goPrev=async()=>{const qi=sessionState.current_question||0;if(qi>0)await setCurrent(qi-1);};
 window._toggleResults=async()=>{await setShowResults(!sessionState.show_results);};
@@ -552,7 +561,9 @@ window._doReset=async()=>{if(!confirm('Reset all votes and go back to question 1
   // Wait a tick so ?t=1 password prompt can resolve
   await new Promise(r=>setTimeout(r,100));
   if(isTeacher)document.getElementById('ftr').innerHTML='<span style="color:#4a4a6a">Teacher mode</span>';
-  await fullRefresh();subscribeRealtime();setInterval(fullRefresh,5000);
+  await fullRefresh();subscribeRealtime();
+  // Safety-net poll only every 30s (realtime handles the rest)
+  setInterval(()=>{if(connected)return;fullRefresh();},30000);
 })();
 </script>
 </body>
