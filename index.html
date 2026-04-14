@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<link rel="preconnect" href="https://eoozcdtnxpzlzgcuembv.supabase.co">
+<link rel="dns-prefetch" href="https://eoozcdtnxpzlzgcuembv.supabase.co">
 <title>Shortest Path — Proof &amp; Vote</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -212,7 +214,9 @@ function resize() {
 window.addEventListener('resize', resize);
 window.animResize = resize;
 
+let _geo=null;
 function geo() {
+  if(_geo&&_geo.w===W&&_geo.h===H)return _geo;
   const w = W, h = H;
   const lineY = h * 0.52;
   const pX = w * 0.5, a = h * 0.22, pY = lineY - a;
@@ -224,7 +228,8 @@ function geo() {
   const qX = pX + 1.4*a, qY = lineY;
   const dx = qX-pX, dy = qY-pY, len = Math.sqrt(dx*dx+dy*dy);
   const rPtX = pX + (dx/len)*a, rPtY = pY + (dy/len)*a;
-  return {w,h,lineY,pX,pY,fX,fY,a,pPrimeX,pPrimeY,dX,dY,r,gX,eX,qX,qY,rPtX,rPtY};
+  _geo={w,h,lineY,pX,pY,fX,fY,a,pPrimeX,pPrimeY,dX,dY,r,gX,eX,qX,qY,rPtX,rPtY};
+  return _geo;
 }
 
 const C = {
@@ -414,10 +419,81 @@ resize(); go(0);
 <!--  VOTING SCRIPT                             -->
 <!-- ═══════════════════════════════════════════ -->
 <script type="module">
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/+esm';
-
+// ── Lightweight Supabase client (REST + Realtime) ──
+// Replaces the full 80KB SDK with ~60 lines of fetch + WebSocket
 const SUPABASE_URL = 'https://eoozcdtnxpzlzgcuembv.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_XOjJBpQpxAUGFc8bjtR3qA_DUTFzrRe';
+const REST = SUPABASE_URL + '/rest/v1';
+const HEADERS = {'apikey':SUPABASE_ANON_KEY,'Content-Type':'application/json','Prefer':'return=representation'};
+
+const sb = {
+  from(table){
+    let url=REST+'/'+table, method='GET', body=null, filters=[], selectCols='*', isSingle=false;
+    const chain = {
+      select(cols){selectCols=cols||'*';method='GET';return chain;},
+      eq(col,val){filters.push(`${col}=eq.${val}`);return chain;},
+      neq(col,val){filters.push(`${col}=neq.${val}`);return chain;},
+      single(){isSingle=true;return chain;},
+      update(obj){method='PATCH';body=JSON.stringify(obj);return chain;},
+      upsert(obj){method='POST';body=JSON.stringify(obj);return chain;},
+      delete(){method='DELETE';return chain;},
+      async then(resolve,reject){
+        try{
+          let u=url+'?select='+encodeURIComponent(selectCols);
+          if(filters.length)u+='&'+filters.join('&');
+          const h={...HEADERS};
+          if(method==='POST')h['Prefer']='resolution=merge-duplicates,return=representation';
+          const res=await fetch(u,{method,headers:h,body});
+          if(!res.ok){const err=await res.json().catch(()=>({message:res.statusText}));resolve({data:null,error:err});return;}
+          const data=await res.json();
+          resolve({data:isSingle?(data[0]||null):data,error:null});
+        }catch(e){resolve({data:null,error:e});}
+      }
+    };
+    return chain;
+  },
+  // Realtime via native WebSocket (Supabase Phoenix protocol)
+  channel(name){
+    const subs=[];
+    return {
+      on(type,filter,cb){subs.push({filter,cb});return this;},
+      subscribe(statusCb){
+        const wsUrl=SUPABASE_URL.replace('https://','wss://')+'/realtime/v1/websocket?apikey='+SUPABASE_ANON_KEY+'&vsn=1.0.0';
+        const ws=new WebSocket(wsUrl);
+        let ref=0,heartbeat=null,joined=false;
+        const send=(topic,event,payload)=>ws.send(JSON.stringify({topic,event,payload,ref:String(++ref)}));
+
+        ws.onopen=()=>{
+          send('realtime:'+name,'phx_join',{config:{broadcast:{self:false},postgres_changes:subs.map(s=>s.filter)}});
+          heartbeat=setInterval(()=>send('phoenix','heartbeat',{}),30000);
+        };
+        ws.onmessage=(e)=>{
+          const msg=JSON.parse(e.data);
+          if(msg.event==='phx_reply'&&msg.payload?.status==='ok'&&!joined){
+            joined=true;if(statusCb)statusCb('SUBSCRIBED');
+          }
+          if(msg.event==='postgres_changes'){
+            const payload=msg.payload;
+            // Match against registered handlers
+            for(const s of subs){
+              if(payload.data?.table===s.filter.table){
+                s.cb({new:payload.data.record,old:payload.data.old_record,eventType:payload.data.type});
+              }
+            }
+          }
+        };
+        ws.onerror=(e)=>{console.error('WS error:',e);if(statusCb)statusCb('CHANNEL_ERROR',e);};
+        ws.onclose=(e)=>{
+          if(heartbeat)clearInterval(heartbeat);
+          if(statusCb&&joined)statusCb('CLOSED');
+          // Auto-reconnect after 3s
+          if(joined){joined=false;setTimeout(()=>this.subscribe(statusCb),3000);}
+        };
+        return this;
+      }
+    };
+  }
+};
 
 const questions = [
   {cat:'language',label:'VOCABULARY',text:'A <span class="blank">___</span> is a straight line from the centre of a circle to its edge.',options:['radius','diameter','chord','tangent'],correct:0},
@@ -464,6 +540,7 @@ if(new URLSearchParams(location.search).has('t')){
 
 const isLocal = SUPABASE_URL.includes('YOUR-PROJECT');
 const letters = ['A','B','C','D'];
+// sb is defined above as the lightweight client — no need for createClient
 
 let sessionId = sessionStorage.getItem('cvote-sid');
 if(!sessionId){sessionId=Math.random().toString(36).slice(2,11);sessionStorage.setItem('cvote-sid',sessionId);}
@@ -485,8 +562,7 @@ function syncSession(){
   if(sn!==knownSession){clearLocalVotes();knownSession=sn;try{localStorage.setItem('cvote-sess',String(sn));}catch(e){}}
 }
 
-let sb=null;
-if(!isLocal)sb=createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+// sb is the lightweight client defined at the top of this script
 
 async function loadSessionState(){if(isLocal)return;
   const{data,error}=await sb.from('session_state').select('*').eq('id',1).single();
@@ -583,12 +659,16 @@ function render(){
   $app.innerHTML=h;
 }
 
+// Debounce guard — prevents double-tap race conditions on teacher controls
+let _busy=false;
+async function guard(fn){if(_busy)return;_busy=true;try{await fn();}finally{_busy=false;}}
+
 window._vote=async(qi,choice)=>{if(myVotes[`q${qi}`]!==undefined)return;saveMyVote(qi,choice);render();await submitVote(qi,choice);};
-window._goNext=async()=>{const qi=sessionState.current_question||0;if(qi<questions.length-1)await setCurrent(qi+1);};
-window._goPrev=async()=>{const qi=sessionState.current_question||0;if(qi>0)await setCurrent(qi-1);};
-window._toggleResults=async()=>{await setShowResults(!sessionState.show_results);};
-window._toggleReveal=async()=>{await setRevealAnswer(!sessionState.reveal_answer);};
-window._doReset=async()=>{if(!confirm('Reset all votes and go back to question 1?'))return;await resetAll();};
+window._goNext=()=>guard(async()=>{const qi=sessionState.current_question||0;if(qi<questions.length-1)await setCurrent(qi+1);});
+window._goPrev=()=>guard(async()=>{const qi=sessionState.current_question||0;if(qi>0)await setCurrent(qi-1);});
+window._toggleResults=()=>guard(async()=>{await setShowResults(!sessionState.show_results);});
+window._toggleReveal=()=>guard(async()=>{await setRevealAnswer(!sessionState.reveal_answer);});
+window._doReset=async()=>{if(!confirm('Reset all votes and go back to question 1?'))return;await guard(resetAll);};
 
 (async function start(){
   // Wait a tick so ?t=1 password prompt can resolve
