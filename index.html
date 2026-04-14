@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Concept Vote — Shortest Path</title>
+<!--
+  ╔══════════════════════════════════════════════════════════╗
+  ║  SETUP                                                   ║
+  ║                                                          ║
+  ║  1. Go to  supabase.com  → New project (free)            ║
+  ║  2. SQL Editor → New query → paste setup.sql → Run       ║
+  ║  3. Settings → API → copy Project URL + anon public key  ║
+  ║  4. Paste both into the CONFIG section below              ║
+  ║                                                          ║
+  ║  DEPLOY                                                  ║
+  ║  npm i -g vercel  (one time)                             ║
+  ║  cd voting-app && vercel                                 ║
+  ║  Use the Vercel URL to generate a QR code.               ║
+  ║                                                          ║
+  ║  TEACHER MODE                                            ║
+  ║  Open the URL with ?t=1  e.g.  yourapp.vercel.app/?t=1   ║
+  ╚══════════════════════════════════════════════════════════╝
+-->
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:#1a1a2e;color:#e0d5c1;
+  font-family:Georgia,'Times New Roman',serif;
+  min-height:100vh;min-height:100dvh;
+  padding:12px;
+  -webkit-tap-highlight-color:transparent;
+}
+.hdr{text-align:center;margin:6px 0 16px}
+.hdr h1{font-size:1.25em;color:#c9b896;letter-spacing:1px}
+.hdr .sub{font-size:0.82em;color:#6a6a8a;font-style:italic;margin-top:2px}
+.card{
+  background:#16162b;border-radius:10px;padding:22px;
+  max-width:620px;margin:0 auto;
+  border:1px solid #2a2a4a;
+}
+.badge{
+  display:inline-block;padding:3px 10px;border-radius:4px;
+  font-size:0.72em;font-weight:bold;letter-spacing:1.5px;
+  text-transform:uppercase;margin-bottom:14px;
+}
+.badge.language{background:#33BBEE18;color:#33BBEE;border:1px solid #33BBEE44}
+.badge.operational{background:#EE773318;color:#EE7733;border:1px solid #EE773344}
+.badge.logical{background:#e8c86a18;color:#e8c86a;border:1px solid #e8c86a44}
+.q-num{float:right;color:#4a4a6a;font-size:0.72em;font-weight:normal;padding-top:3px}
+.q-text{
+  font-size:1.08em;line-height:1.65;margin-bottom:20px;color:#d4cbb5;
+}
+.q-text .blank{
+  display:inline-block;border-bottom:2px solid #e8c86a;
+  min-width:90px;text-align:center;color:#e8c86a;
+  font-weight:bold;
+}
+.opts{display:flex;flex-direction:column;gap:10px}
+.opt{
+  display:flex;align-items:center;
+  background:#2a2a4a;border:2px solid #3a3a5a;
+  color:#c9b896;padding:14px 16px;border-radius:8px;
+  font-family:Georgia,serif;font-size:1em;
+  cursor:pointer;transition:all 0.25s;
+  text-align:left;-webkit-user-select:none;user-select:none;
+}
+.opt:active{transform:scale(0.98)}
+.opt:hover{background:#3a3a5a;border-color:#5a5a7a}
+.opt.selected{background:#0077BB28;border-color:#0077BB;color:#ddeeff}
+.opt.correct{background:#009E7328;border-color:#009E73;color:#ccffe8}
+.opt.wrong-picked{background:#EE337722;border-color:#EE3377;color:#ffccdd}
+.opt.disabled{pointer-events:none;opacity:0.85}
+.ltr{
+  width:28px;height:28px;border-radius:50%;
+  background:#1a1a2e;display:flex;align-items:center;justify-content:center;
+  font-weight:bold;font-size:0.82em;margin-right:12px;flex-shrink:0;
+  transition:all 0.25s;
+}
+.opt.selected .ltr{background:#0077BB;color:#fff}
+.opt.correct .ltr{background:#009E73;color:#fff}
+.opt.wrong-picked .ltr{background:#EE3377;color:#fff}
+.voted-msg{
+  text-align:center;padding:10px;margin-top:14px;
+  color:#009E73;font-size:0.92em;
+}
+.voted-msg .check{font-size:1.2em}
+
+/* histogram */
+.hist{margin-top:18px}
+.hrow{display:flex;align-items:center;margin-bottom:8px}
+.hlbl{width:110px;text-align:right;padding-right:10px;font-size:0.85em;color:#8a7e6b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hbar-wrap{flex:1;height:30px;background:#1a1a2e;border-radius:5px;overflow:hidden;position:relative}
+.hbar{height:100%;border-radius:5px;transition:width 0.6s cubic-bezier(.25,.8,.25,1);min-width:0}
+.hbar.c0{background:#33BBEE}.hbar.c1{background:#EE7733}.hbar.c2{background:#CC79A7}.hbar.c3{background:#e8c86a}
+.hcount{width:45px;text-align:right;font-size:0.85em;color:#6a6a8a;margin-left:8px}
+.hpct{width:40px;text-align:right;font-size:0.75em;color:#4a4a6a;margin-left:4px}
+
+/* teacher controls */
+.tctrls{
+  display:flex;gap:8px;justify-content:center;flex-wrap:wrap;
+  margin:14px auto;max-width:620px;
+}
+.tb{
+  background:#2a2a4a;color:#c9b896;border:1px solid #4a4a6a;
+  padding:10px 16px;border-radius:5px;font-family:Georgia,serif;
+  font-size:0.88em;cursor:pointer;transition:all 0.2s;
+}
+.tb:hover{background:#3a3a5a;border-color:#6a6a8a}
+.tb.on{background:#0077BB;color:#fff;border-color:#0099DD}
+.tb.danger{border-color:#77333a}.tb.danger:hover{background:#44222a;border-color:#993344}
+.tb:disabled{opacity:0.3;cursor:default;pointer-events:none}
+.vcount{text-align:center;color:#6a6a8a;font-size:0.88em;margin:10px 0}
+.vcount b{color:#c9b896}
+
+/* progress dots */
+.dots{display:flex;justify-content:center;gap:6px;margin:18px 0 4px}
+.dot{
+  width:10px;height:10px;border-radius:50%;background:#2a2a4a;
+  border:1px solid #3a3a5a;transition:all 0.3s;
+}
+.dot.done{background:#009E73;border-color:#009E73}
+.dot.cur{background:#0077BB;border-color:#33BBEE;box-shadow:0 0 6px #0077BB88}
+.dot.upcoming{background:#2a2a4a}
+
+/* misc */
+.waiting{
+  text-align:center;padding:50px 20px;color:#6a6a8a;
+  font-style:italic;font-size:1.05em;
+}
+.waiting .pulse{
+  display:inline-block;width:8px;height:8px;border-radius:50%;
+  background:#0077BB;margin-left:6px;
+  animation:pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
+.banner{
+  text-align:center;padding:8px 14px;margin:0 auto 12px;
+  max-width:620px;border-radius:6px;font-size:0.8em;
+  background:#e8c86a18;color:#e8c86a;border:1px solid #e8c86a33;
+}
+.conn{font-size:0.72em;text-align:center;margin-bottom:8px}
+.conn .live{color:#009E73}.conn .off{color:#EE3377}
+.ftr{text-align:center;margin-top:24px;font-size:0.78em;color:#2a2a4a}
+.ftr a{color:#4a4a6a;text-decoration:none}
+.ftr a:hover{color:#6a6a8a}
+
+@media(min-width:500px){
+  .card{padding:28px}
+  .q-text{font-size:1.15em}
+  .opt{padding:16px 20px}
+}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>Shortest Path — Concept Vote</h1>
+  <p class="sub">Euclid's perpendicular proof</p>
+</div>
+
+<div id="app"></div>
+
+<div class="ftr" id="ftr">
+  <a href="?t=1" id="teacher-link">Teacher mode</a>
+</div>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+// ═══════════════════════════════════════════════════
+//  CONFIG — paste your Supabase credentials here
+// ═══════════════════════════════════════════════════
+const SUPABASE_URL = 'https://eoozcdtnxpzlzgcuembv.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_XOjJBpQpxAUGFc8bjtR3qA_DUTFzrRe';
+
+// ═══════════════════════════════════════════════════
+//  QUESTIONS
+// ═══════════════════════════════════════════════════
+const questions = [
+  // ── LANGUAGE (vocabulary / fill-in-the-blank) ──
+  {
+    cat: 'language', label: 'VOCABULARY',
+    text: 'A <span class="blank">___</span> is a straight line from the centre of a circle to its edge.',
+    options: ['radius', 'diameter', 'chord', 'tangent'],
+    correct: 0
+  },
+  {
+    cat: 'language', label: 'VOCABULARY',
+    text: 'A line that touches a circle at exactly one point is called a <span class="blank">___</span>.',
+    options: ['chord', 'tangent', 'radius', 'parallel line'],
+    correct: 1
+  },
+  {
+    cat: 'language', label: 'VOCABULARY',
+    text: 'Two lines that meet at a 90\u00B0 angle are called <span class="blank">___</span>.',
+    options: ['parallel', 'diagonal', 'perpendicular', 'horizontal'],
+    correct: 2
+  },
+
+  // ── OPERATIONAL (what happens / what you do) ──
+  {
+    cat: 'operational', label: 'WHAT HAPPENS',
+    text: 'In the construction, why does the first circle cross line \u2113?',
+    options: [
+      'Because P is on line \u2113',
+      'Because D is on the far side of \u2113 from P',
+      'Because the circle is very small',
+      'Because \u2113 is curved'
+    ],
+    correct: 1
+  },
+  {
+    cat: 'operational', label: 'WHAT HAPPENS',
+    text: 'We draw two more circles at G and E. Where do they meet?',
+    options: [
+      'Only at point P',
+      'At P and at a new point P\u2032 below \u2113',
+      'They do not meet',
+      'At the centre of line \u2113'
+    ],
+    correct: 1
+  },
+  {
+    cat: 'operational', label: 'FILL IN THE BLANK',
+    text: 'F is the <span class="blank">___</span> of segment GE.',
+    options: ['endpoint', 'midpoint', 'radius', 'centre'],
+    correct: 1
+  },
+  {
+    cat: 'operational', label: 'WHAT HAPPENS',
+    text: 'The small circle has centre P and radius PF. How does line \u2113 meet this circle?',
+    options: [
+      '\u2113 cuts through the circle at two points',
+      '\u2113 is inside the circle',
+      '\u2113 touches the circle at exactly one point (F)',
+      '\u2113 does not touch the circle at all'
+    ],
+    correct: 2
+  },
+
+  // ── LOGICAL (why / proof reasoning) ──
+  {
+    cat: 'logical', label: 'WHY',
+    text: 'PF is perpendicular to \u2113 because\u2026 (Euclid III.3)',
+    options: [
+      'PF passes through centre P and bisects chord GE',
+      'PF is the longest line from P to \u2113',
+      'F is the endpoint of \u2113',
+      'All lines from P are perpendicular'
+    ],
+    correct: 0
+  },
+  {
+    cat: 'logical', label: 'WHY',
+    text: 'For any point Q \u2260 F on \u2113, why is PQ longer than PF?',
+    options: [
+      'Because Q is always far from P',
+      'Because PQ > PR, and PR = PF (both are radii)',
+      'Because PF is a diameter',
+      'Because \u2113 is the longest line'
+    ],
+    correct: 1
+  },
+  {
+    cat: 'logical', label: 'WHY',
+    text: '\u201CThe whole is greater than the part.\u201D What is the whole and what is the part?',
+    options: [
+      'The big circle is the whole, the small circle is the part',
+      'Line \u2113 is the whole, segment PF is the part',
+      'Segment PQ is the whole, segment PR is the part',
+      'Point P is the whole, point F is the part'
+    ],
+    correct: 2
+  }
+];
+
+// ═══════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════
+const isTeacher = new URLSearchParams(location.search).has('t');
+const isLocal = SUPABASE_URL.includes('YOUR-PROJECT');
+const letters = ['A', 'B', 'C', 'D'];
+
+let sessionId = sessionStorage.getItem('cvote-sid');
+if (!sessionId) {
+  sessionId = Math.random().toString(36).slice(2, 11);
+  sessionStorage.setItem('cvote-sid', sessionId);
+}
+
+// Local vote memory (survives page refresh)
+let myVotes = {};
+try { myVotes = JSON.parse(localStorage.getItem('cvote-my') || '{}'); } catch(e) {}
+function saveMyVote(qi, choice) {
+  myVotes[`q${qi}`] = choice;
+  localStorage.setItem('cvote-my', JSON.stringify(myVotes));
+}
+
+// App state
+let sessionState = { current_question: 0, show_results: false, reveal_answer: false };
+let voteCounts = [0, 0, 0, 0];
+let totalVotes = 0;
+let connected = false;
+
+// Local demo fallback
+let localVotes = {};
+
+// ═══════════════════════════════════════════════════
+//  SUPABASE CLIENT
+// ═══════════════════════════════════════════════════
+let sb = null;
+if (!isLocal) {
+  sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
+
+// ── Data fetching ──
+async function loadSessionState() {
+  if (isLocal) return;
+  const { data } = await sb.from('session_state').select('*').eq('id', 1).single();
+  if (data) sessionState = data;
+}
+
+async function loadVotes() {
+  if (isLocal) {
+    const qv = localVotes[`q${sessionState.current_question}`] || {};
+    voteCounts = [0, 0, 0, 0];
+    totalVotes = 0;
+    for (const c of Object.values(qv)) {
+      if (c >= 0 && c < 4) { voteCounts[c]++; totalVotes++; }
+    }
+    return;
+  }
+  const { data } = await sb
+    .from('votes')
+    .select('choice')
+    .eq('question_index', sessionState.current_question);
+  voteCounts = [0, 0, 0, 0];
+  totalVotes = 0;
+  for (const row of (data || [])) {
+    if (row.choice >= 0 && row.choice < 4) { voteCounts[row.choice]++; totalVotes++; }
+  }
+}
+
+async function fullRefresh() {
+  await loadSessionState();
+  await loadVotes();
+  render();
+}
+
+// ── Writes ──
+async function submitVote(qi, choice) {
+  saveMyVote(qi, choice);
+  if (isLocal) {
+    if (!localVotes[`q${qi}`]) localVotes[`q${qi}`] = {};
+    localVotes[`q${qi}`][sessionId] = choice;
+    await loadVotes();
+    render();
+    return;
+  }
+  await sb.from('votes').upsert({
+    voter_id: sessionId,
+    question_index: qi,
+    choice: choice
+  });
+}
+
+async function setCurrent(i) {
+  if (isLocal) {
+    sessionState = { ...sessionState, current_question: i, show_results: false, reveal_answer: false };
+    await loadVotes(); render(); return;
+  }
+  await sb.from('session_state').update({
+    current_question: i, show_results: false, reveal_answer: false
+  }).eq('id', 1);
+}
+
+async function setShowResults(v) {
+  if (isLocal) { sessionState.show_results = v; render(); return; }
+  await sb.from('session_state').update({ show_results: v }).eq('id', 1);
+}
+
+async function setRevealAnswer(v) {
+  if (isLocal) { sessionState.reveal_answer = v; render(); return; }
+  await sb.from('session_state').update({ reveal_answer: v }).eq('id', 1);
+}
+
+async function resetAll() {
+  myVotes = {};
+  localStorage.setItem('cvote-my', '{}');
+  if (isLocal) {
+    sessionState = { current_question: 0, show_results: false, reveal_answer: false };
+    localVotes = {};
+    await loadVotes(); render(); return;
+  }
+  await sb.from('votes').delete().neq('voter_id', '');
+  await sb.from('session_state').update({
+    current_question: 0, show_results: false, reveal_answer: false
+  }).eq('id', 1);
+}
+
+// ── Real-time subscriptions ──
+function subscribeRealtime() {
+  if (isLocal) return;
+
+  sb.channel('live')
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'session_state' },
+      (payload) => {
+        if (payload.new) {
+          sessionState = payload.new;
+          // question changed → reload votes for the new question
+          loadVotes().then(render);
+        }
+      }
+    )
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'votes' },
+      (payload) => {
+        // only care about votes on the current question
+        if (payload.new && payload.new.question_index === sessionState.current_question) {
+          loadVotes().then(render);
+        }
+      }
+    )
+    .subscribe((status) => {
+      connected = (status === 'SUBSCRIBED');
+      render();
+    });
+}
+
+// ═══════════════════════════════════════════════════
+//  UI RENDERING
+// ═══════════════════════════════════════════════════
+const $app = document.getElementById('app');
+
+function render() {
+  const qi = sessionState.current_question || 0;
+  const q = questions[qi];
+  const showRes = !!sessionState.show_results;
+  const revealAns = !!sessionState.reveal_answer;
+  const myChoice = myVotes[`q${qi}`];
+  const hasVoted = myChoice !== undefined;
+
+  let html = '';
+
+  // Banners
+  if (isLocal) {
+    html += '<div class="banner">Demo mode \u2014 paste your Supabase credentials to enable multi-device voting</div>';
+  } else if (!connected) {
+    html += '<div class="conn"><span class="off">\u25CF</span> connecting\u2026</div>';
+  } else {
+    html += '<div class="conn"><span class="live">\u25CF</span> live</div>';
+  }
+
+  // Teacher controls
+  if (isTeacher) {
+    html += '<div class="tctrls">';
+    html += `<button class="tb" onclick="window._goPrev()" ${qi===0?'disabled':''}>&#9664; Prev</button>`;
+    html += `<button class="tb${showRes?' on':''}" onclick="window._toggleResults()">${showRes?'Hide results':'Show results'}</button>`;
+    html += `<button class="tb${revealAns?' on':''}" onclick="window._toggleReveal()" ${!showRes?'disabled':''}>${revealAns?'Hide answer':'Reveal answer'}</button>`;
+    html += `<button class="tb" onclick="window._goNext()" ${qi>=questions.length-1?'disabled':''}>Next &#9654;</button>`;
+    html += `<button class="tb danger" onclick="window._doReset()">Reset</button>`;
+    html += '</div>';
+    html += `<div class="vcount"><b>${totalVotes}</b> vote${totalVotes!==1?'s':''} received</div>`;
+  }
+
+  // Question card
+  html += '<div class="card">';
+  html += `<span class="badge ${q.cat}">${q.label}</span>`;
+  html += `<span class="q-num">${qi+1} / ${questions.length}</span>`;
+  html += `<div class="q-text">${q.text}</div>`;
+
+  if (isTeacher && showRes) {
+    // Histogram
+    const maxCount = Math.max(...voteCounts, 1);
+    html += '<div class="hist">';
+    for (let i = 0; i < q.options.length; i++) {
+      const pct = totalVotes > 0 ? Math.round(voteCounts[i] / totalVotes * 100) : 0;
+      const w = totalVotes > 0 ? (voteCounts[i] / maxCount * 100) : 0;
+      let lblStyle = '';
+      if (revealAns && i === q.correct) lblStyle = ' style="color:#009E73;font-weight:bold"';
+      html += '<div class="hrow">';
+      html += `<div class="hlbl"${lblStyle}>${revealAns && i===q.correct?'\u2713 ':''}${letters[i]}) ${q.options[i]}</div>`;
+      html += `<div class="hbar-wrap"><div class="hbar c${i}" style="width:${w}%"></div></div>`;
+      html += `<div class="hcount">${voteCounts[i]}</div>`;
+      html += `<div class="hpct">${pct}%</div>`;
+      html += '</div>';
+    }
+    html += '</div>';
+  } else {
+    // Voting buttons
+    html += '<div class="opts">';
+    for (let i = 0; i < q.options.length; i++) {
+      let cls = 'opt';
+      if (hasVoted && !revealAns) {
+        cls += ' disabled';
+        if (myChoice === i) cls += ' selected';
+      }
+      if (revealAns) {
+        cls += ' disabled';
+        if (i === q.correct) cls += ' correct';
+        else if (hasVoted && myChoice === i && myChoice !== q.correct) cls += ' wrong-picked';
+        else if (hasVoted && myChoice === i) cls += ' selected';
+      }
+      html += `<div class="${cls}" onclick="window._vote(${qi},${i})">`;
+      html += `<span class="ltr">${letters[i]}</span>`;
+      html += `<span>${q.options[i]}</span>`;
+      html += '</div>';
+    }
+    html += '</div>';
+    if (hasVoted && !revealAns) {
+      html += '<div class="voted-msg"><span class="check">\u2713</span> Vote recorded</div>';
+    }
+  }
+  html += '</div>';
+
+  // Progress dots
+  html += '<div class="dots">';
+  for (let i = 0; i < questions.length; i++) {
+    let dcls = 'dot';
+    if (i < qi) dcls += ' done';
+    else if (i === qi) dcls += ' cur';
+    else dcls += ' upcoming';
+    html += `<div class="${dcls}"></div>`;
+  }
+  html += '</div>';
+
+  $app.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════
+//  ACTIONS (exposed on window for onclick)
+// ═══════════════════════════════════════════════════
+window._vote = async (qi, choice) => {
+  if (myVotes[`q${qi}`] !== undefined) return;
+  await submitVote(qi, choice);
+};
+
+window._goNext = async () => {
+  const qi = sessionState.current_question || 0;
+  if (qi < questions.length - 1) await setCurrent(qi + 1);
+};
+window._goPrev = async () => {
+  const qi = sessionState.current_question || 0;
+  if (qi > 0) await setCurrent(qi - 1);
+};
+window._toggleResults = async () => {
+  await setShowResults(!sessionState.show_results);
+};
+window._toggleReveal = async () => {
+  await setRevealAnswer(!sessionState.reveal_answer);
+};
+window._doReset = async () => {
+  if (!confirm('Reset all votes and go back to question 1?')) return;
+  await resetAll();
+};
+
+// ═══════════════════════════════════════════════════
+//  START
+// ═══════════════════════════════════════════════════
+(async function start() {
+  if (isTeacher) {
+    document.getElementById('ftr').innerHTML = '<span style="color:#4a4a6a">Teacher mode</span>';
+  }
+
+  // Initial load
+  await fullRefresh();
+
+  // Subscribe to real-time changes
+  subscribeRealtime();
+
+  // Safety-net poll every 5s (in case websocket hiccups)
+  setInterval(fullRefresh, 5000);
+})();
+</script>
+</body>
+</html>
