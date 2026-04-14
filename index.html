@@ -435,7 +435,7 @@ const questions = [
 // Teacher mode: password-gated (password: "euclid")
 let isTeacher = false;
 async function sha256(str){const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));return[...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');}
-async function checkTeacherPassword(pw){return(await sha256(pw))==='d3040f07d38df2a4a3afbe0e3c8e7348b2a1ee48dcd89e63e06bee20ef2f7e30';}
+async function checkTeacherPassword(pw){return(await sha256(pw))==='d54f5fedac0862695c43730971258eea4d446e301e7314bf14e702db44f7d587';}
 // hash above = sha256("euclid")
 
 window._promptTeacher=async()=>{
