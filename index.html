@@ -430,6 +430,18 @@ const questions = [
   {cat:'logical',label:'WHY',text:'PF is perpendicular to \u2113 because\u2026 (Euclid III.3)',options:['PF passes through centre P and bisects chord GE','PF is the longest line from P to \u2113','F is the endpoint of \u2113','All lines from P are perpendicular'],correct:0},
   {cat:'logical',label:'WHY',text:'For any point Q \u2260 F on \u2113, why is PQ longer than PF?',options:['Because Q is always far from P','Because PQ > PR, and PR = PF (both are radii)','Because PF is a diameter','Because \u2113 is the longest line'],correct:1},
   {cat:'logical',label:'WHY',text:'\u201CThe whole is greater than the part.\u201D What is the whole and what is the part?',options:['The big circle is the whole, the small circle is the part','Line \u2113 is the whole, segment PF is the part','Segment PQ is the whole, segment PR is the part','Point P is the whole, point F is the part'],correct:2},
+
+  // ── deep-thought / conceptual questions ──
+  {cat:'logical',label:'THINK DEEPER',text:'Could we have used a different radius for the first circle (centred at P) and still found a perpendicular?',options:['No — only one special radius works','Yes — any radius that reaches past \u2113 will work','Yes — but only if the radius equals PD','No — the circle must pass through D exactly'],correct:1},
+  {cat:'logical',label:'THINK DEEPER',text:'Euclid\u2019s proof shows PF is the <em>shortest</em> path from P to \u2113. Does that automatically mean PF is perpendicular to \u2113?',options:['Yes — the shortest distance from a point to a line is always perpendicular','No — shortest distance and perpendicularity are unrelated','Only if \u2113 is horizontal','Only if P is directly above \u2113'],correct:0},
+  {cat:'logical',label:'THINK DEEPER',text:'What would go wrong if G and E were the same point?',options:['Nothing — the proof still works','We couldn\u2019t build two new circles — there\u2019d be only one intersection','F would still be the midpoint','The perpendicular would be longer'],correct:1},
+  {cat:'logical',label:'THINK DEEPER',text:'The proof uses the fact that all radii of a circle are equal. Which step depends on this most?',options:['Drawing the first circle through D','Saying PF = PR because both are radii of the small circle','Placing point F on line \u2113','Choosing P as a point not on \u2113'],correct:1},
+  {cat:'logical',label:'THINK DEEPER',text:'Imagine there is no shortest path from P to \u2113 (every path could be made shorter). What would that mean about the geometry?',options:['P must be on line \u2113','Line \u2113 would have to be curved, not straight','The plane would have to be non-Euclidean or \u2113 not a line','Nothing — this can happen in normal geometry'],correct:2},
+  {cat:'logical',label:'THINK DEEPER',text:'Euclid proves "PQ > PF" by showing PQ > PR and PR = PF. Why not just measure PQ and PF directly?',options:['Measurement tools didn\u2019t exist in ancient Greece','A measurement only checks one case — the proof covers every possible Q on \u2113','PF is too short to measure','Euclid preferred longer proofs'],correct:1},
+
+  // ── more vocabulary / language ──
+  {cat:'language',label:'VOCABULARY',text:'A <span class="blank">___</span> is a line segment whose both endpoints lie on a circle.',options:['radius','tangent','chord','diameter'],correct:2},
+  {cat:'language',label:'VOCABULARY',text:'To <span class="blank">___</span> a segment means to cut it into two equal halves.',options:['bisect','intersect','reflect','extend'],correct:0},
 ];
 
 // Teacher mode: password-gated (password: "euclid")
