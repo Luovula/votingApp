@@ -167,7 +167,7 @@ body{
 <div id="vote-tab" class="tab-panel">
   <div id="vote-app"></div>
   <div class="ftr" id="ftr">
-    <a href="?t=1" id="teacher-link">Teacher mode</a>
+    <a href="#" id="teacher-link" onclick="window._promptTeacher();return false;">Teacher mode</a>
   </div>
 </div>
 
@@ -432,7 +432,24 @@ const questions = [
   {cat:'logical',label:'WHY',text:'\u201CThe whole is greater than the part.\u201D What is the whole and what is the part?',options:['The big circle is the whole, the small circle is the part','Line \u2113 is the whole, segment PF is the part','Segment PQ is the whole, segment PR is the part','Point P is the whole, point F is the part'],correct:2},
 ];
 
-const isTeacher = new URLSearchParams(location.search).has('t');
+// Teacher mode: password-gated (password: "euclid")
+let isTeacher = false;
+async function sha256(str){const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));return[...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');}
+async function checkTeacherPassword(pw){return(await sha256(pw))==='d3040f07d38df2a4a3afbe0e3c8e7348b2a1ee48dcd89e63e06bee20ef2f7e30';}
+// hash above = sha256("euclid")
+
+window._promptTeacher=async()=>{
+  const pw=prompt('Enter teacher password:');
+  if(!pw)return;
+  if(await checkTeacherPassword(pw)){isTeacher=true;document.getElementById('ftr').innerHTML='<span style="color:#4a4a6a">Teacher mode</span>';render();}
+  else{alert('Incorrect password.');}
+};
+
+// Auto-check if ?t=1 is in URL (still needs password)
+if(new URLSearchParams(location.search).has('t')){
+  (async()=>{const pw=prompt('Enter teacher password:');if(pw&&await checkTeacherPassword(pw)){isTeacher=true;}})();
+}
+
 const isLocal = SUPABASE_URL.includes('YOUR-PROJECT');
 const letters = ['A','B','C','D'];
 
@@ -532,6 +549,8 @@ window._toggleReveal=async()=>{await setRevealAnswer(!sessionState.reveal_answer
 window._doReset=async()=>{if(!confirm('Reset all votes and go back to question 1?'))return;await resetAll();};
 
 (async function start(){
+  // Wait a tick so ?t=1 password prompt can resolve
+  await new Promise(r=>setTimeout(r,100));
   if(isTeacher)document.getElementById('ftr').innerHTML='<span style="color:#4a4a6a">Teacher mode</span>';
   await fullRefresh();subscribeRealtime();setInterval(fullRefresh,5000);
 })();
