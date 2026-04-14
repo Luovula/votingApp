@@ -473,7 +473,7 @@ try{myVotes=JSON.parse(localStorage.getItem('cvote-my')||'{}');}catch(e){}
 function saveMyVote(qi,choice){myVotes[`q${qi}`]=choice;localStorage.setItem('cvote-my',JSON.stringify(myVotes));}
 
 let sessionState={current_question:0,show_results:false,reveal_answer:false,session_number:1};
-let voteCounts=[0,0,0,0],totalVotes=0,connected=false;
+let voteCounts=[0,0,0,0],totalVotes=0,connected=false,dataLoaded=false,connError=false;
 let localVotes={},localSessionNum=1;
 
 // Track which session the student knows about
@@ -488,13 +488,17 @@ function syncSession(){
 let sb=null;
 if(!isLocal)sb=createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 
-async function loadSessionState(){if(isLocal)return;const{data}=await sb.from('session_state').select('*').eq('id',1).single();if(data){sessionState=data;syncSession();}}
+async function loadSessionState(){if(isLocal)return;
+  const{data,error}=await sb.from('session_state').select('*').eq('id',1).single();
+  if(error){console.error('loadSessionState:',error);connError=true;return;}
+  if(data){sessionState=data;syncSession();dataLoaded=true;connError=false;}}
 async function loadVotes(){
   const sn=sessionState.session_number||1;
   if(isLocal){const qv=localVotes[`${sn}_${sessionState.current_question}`]||{};voteCounts=[0,0,0,0];totalVotes=0;
     for(const c of Object.values(qv)){if(c>=0&&c<4){voteCounts[c]++;totalVotes++;}}return;}
-  const{data}=await sb.from('votes').select('choice').eq('question_index',sessionState.current_question).eq('session_number',sn);
-  voteCounts=[0,0,0,0];totalVotes=0;for(const row of(data||[])){if(row.choice>=0&&row.choice<4){voteCounts[row.choice]++;totalVotes++;}}}
+  const{data,error}=await sb.from('votes').select('choice').eq('question_index',sessionState.current_question).eq('session_number',sn);
+  if(error){console.error('loadVotes:',error);connError=true;return;}
+  connError=false;voteCounts=[0,0,0,0];totalVotes=0;for(const row of(data||[])){if(row.choice>=0&&row.choice<4){voteCounts[row.choice]++;totalVotes++;}}}
 async function fullRefresh(){await loadSessionState();await loadVotes();render();}
 
 async function submitVote(qi,choice){
@@ -533,7 +537,9 @@ function render(){
   let h='';
 
   if(isLocal)h+='<div class="banner">Demo mode \u2014 paste Supabase credentials to enable multi-device voting</div>';
-  else if(!connected)h+='<div class="conn"><span class="off">\u25CF</span> connecting\u2026</div>';
+  else if(connError)h+='<div class="conn"><span class="off">\u25CF</span> error \u2014 check console</div>';
+  else if(!connected&&!dataLoaded)h+='<div class="conn"><span class="off">\u25CF</span> connecting\u2026</div>';
+  else if(!connected)h+='<div class="conn"><span class="off">\u25CF</span> syncing\u2026</div>';
   else h+='<div class="conn"><span class="live">\u25CF</span> live</div>';
 
   if(isTeacher){h+='<div class="tctrls">';
