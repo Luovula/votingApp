@@ -582,14 +582,24 @@ async function submitVote(qi,choice){
   if(isLocal){saveMyVote(qi,choice);const k=`${sn}_${qi}`;if(!localVotes[k])localVotes[k]={};localVotes[k][sessionId]=choice;await loadVotes();render();return;}
   await sb.from('votes').upsert({voter_id:sessionId,question_index:qi,choice:choice,session_number:sn});}
 async function setCurrent(i){
-  if(isLocal){sessionState={...sessionState,current_question:i,show_results:false,reveal_answer:false};await loadVotes();render();return;}
-  await sb.from('session_state').update({current_question:i,show_results:false,reveal_answer:false}).eq('id',1);}
-async function setShowResults(v){if(isLocal){sessionState.show_results=v;render();return;}await sb.from('session_state').update({show_results:v}).eq('id',1);}
-async function setRevealAnswer(v){if(isLocal){sessionState.reveal_answer=v;render();return;}await sb.from('session_state').update({reveal_answer:v}).eq('id',1);}
+  sessionState={...sessionState,current_question:i,show_results:false,reveal_answer:false};
+  voteCounts=[0,0,0,0];totalVotes=0;render();
+  if(isLocal)return;
+  sb.from('session_state').update({current_question:i,show_results:false,reveal_answer:false}).eq('id',1);}
+async function setShowResults(v){
+  sessionState.show_results=v;render();
+  if(isLocal)return;
+  sb.from('session_state').update({show_results:v}).eq('id',1);}
+async function setRevealAnswer(v){
+  sessionState.reveal_answer=v;render();
+  if(isLocal)return;
+  sb.from('session_state').update({reveal_answer:v}).eq('id',1);}
 async function resetAll(){clearLocalVotes();
-  if(isLocal){localSessionNum++;sessionState={current_question:0,show_results:false,reveal_answer:false,session_number:localSessionNum};localVotes={};await loadVotes();render();return;}
   const newSn=(sessionState.session_number||1)+1;
-  await sb.from('session_state').update({current_question:0,show_results:false,reveal_answer:false,session_number:newSn}).eq('id',1);}
+  sessionState={current_question:0,show_results:false,reveal_answer:false,session_number:newSn};
+  voteCounts=[0,0,0,0];totalVotes=0;render();
+  if(isLocal){localSessionNum=newSn;localVotes={};return;}
+  sb.from('session_state').update({current_question:0,show_results:false,reveal_answer:false,session_number:newSn}).eq('id',1);}
 
 function subscribeRealtime(){if(isLocal)return;
   sb.channel('live')
